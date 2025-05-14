@@ -29,12 +29,12 @@ locals {
 
 # SQS Queues with Dead Letter Queues (DLQ)
 resource "aws_sqs_queue" "email_dlq" {
-  name                      = "email-dlq"
+  name                      = "email-dlq-${local.suffix}"
   message_retention_seconds = 86400
 }
 
 resource "aws_sqs_queue" "email_queue" {
-  name                      = "email-queue"
+  name                      = "email-queue-${local.suffix}"
   message_retention_seconds = 86400
   redrive_policy            = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.email_dlq.arn
@@ -43,12 +43,12 @@ resource "aws_sqs_queue" "email_queue" {
 }
 
 resource "aws_sqs_queue" "sms_dlq" {
-  name                      = "sms-dlq"
+  name                      = "sms-dlq-${local.suffix}"
   message_retention_seconds = 86400
 }
 
 resource "aws_sqs_queue" "sms_queue" {
-  name                      = "sms-queue"
+  name                      = "sms-queue-${local.suffix}"
   message_retention_seconds = 86400
   redrive_policy            = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.sms_dlq.arn
@@ -57,12 +57,12 @@ resource "aws_sqs_queue" "sms_queue" {
 }
 
 resource "aws_sqs_queue" "push_dlq" {
-  name                      = "push-dlq"
+  name                      = "push-dlq-${local.suffix}"
   message_retention_seconds = 86400
 }
 
 resource "aws_sqs_queue" "push_queue" {
-  name                      = "push-queue"
+  name                      = "push-queue-${local.suffix}"
   message_retention_seconds = 86400
   redrive_policy            = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.push_dlq.arn
@@ -90,7 +90,7 @@ resource "aws_iam_role" "lambda_role" {
 
 # Add additional policies for SQS, SES, SNS, and DynamoDB access
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_notification_policy"
+  name        = "lambda_notification_policy_${local.suffix}"
   description = "Policy for Lambda to access notification services"
 
   policy = jsonencode({
@@ -101,7 +101,12 @@ resource "aws_iam_policy" "lambda_policy" {
           "sqs:SendMessage",
           "sqs:ReceiveMessage",
           "sqs:DeleteMessage",
-          "sqs:GetQueueAttributes"
+          "sqs:GetQueueAttributes",
+          "sqs:ChangeMessageVisibility",
+          "sqs:GetQueueUrl",
+          "sqs:ListQueues",
+          "sqs:ListQueueTags",
+          "sqs:ListDeadLetterSourceQueues"
         ],
         Resource = [
           aws_sqs_queue.email_queue.arn,
@@ -215,7 +220,7 @@ resource "aws_lambda_event_source_mapping" "sms_queue_mapping" {
 
 # API Gateway with Cognito Authentication
 resource "aws_cognito_user_pool" "user_pool" {
-  name = "notification-user-pool"
+  name = "notification-user-pool-${local.suffix}"
   
   password_policy {
     minimum_length    = 8
