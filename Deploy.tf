@@ -206,9 +206,7 @@ resource "aws_cognito_user_pool" "user_pool" {
     require_uppercase = true
   }
   
-  auto_verify {
-    email = true
-  }
+  auto_verified_attributes = ["email"]
   
   schema {
     attribute_data_type = "String"
