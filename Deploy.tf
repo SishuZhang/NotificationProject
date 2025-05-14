@@ -310,11 +310,16 @@ resource "aws_api_gateway_deployment" "api_deployment" {
   depends_on = [aws_api_gateway_integration.lambda_integration]
   
   rest_api_id = aws_api_gateway_rest_api.notification_api.id
-  stage_name  = "prod"
   
   lifecycle {
     create_before_destroy = true
   }
+}
+
+resource "aws_api_gateway_stage" "prod" {
+  deployment_id = aws_api_gateway_deployment.api_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.notification_api.id
+  stage_name    = "prod"
 }
 
 # Lambda Permission for API Gateway
@@ -370,7 +375,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
 
 # Outputs
 output "api_url" {
-  value = "${aws_api_gateway_deployment.api_deployment.invoke_url}/send"
+  value = "${aws_api_gateway_stage.prod.invoke_url}/send"
   description = "The URL endpoint for sending notifications"
 }
 
