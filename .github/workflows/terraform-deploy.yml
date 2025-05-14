@@ -35,7 +35,7 @@ jobs:
       uses: actions/checkout@v3
     
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
@@ -122,27 +122,9 @@ jobs:
     - name: Package Lambda Functions
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
       run: |
-        # Create a temporary directory for packaging
-        mkdir -p lambda_packages
-        
-        # Package the API Lambda
-        cd lambda_packages
-        cp ../lambda.py .
-        pip install boto3 -t .
-        zip -r lambda.zip .
-        mv lambda.zip ..
-        
-        # Package the Worker Lambda
-        cd ..
-        rm -rf lambda_packages/*
-        cp worker_lambda.py lambda_packages/
-        cd lambda_packages
-        pip install boto3 -t .
-        zip -r worker_lambda.zip .
-        mv worker_lambda.zip ..
-        
-        cd ..
-        ls -la *.zip
+        # Use the improved packaging script
+        chmod +x ziplambda.sh
+        ./ziplambda.sh
     
     - name: Terraform Apply
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -180,60 +162,4 @@ jobs:
         echo "User Pool ID: ${{ steps.tf_outputs.outputs.USER_POOL_ID }}" >> $GITHUB_STEP_SUMMARY
         echo "App Client ID: ${{ steps.tf_outputs.outputs.APP_CLIENT_ID }}" >> $GITHUB_STEP_SUMMARY
         echo "Cognito Domain: ${{ steps.tf_outputs.outputs.COGNITO_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
-        echo "Hosted UI URL: ${{ steps.tf_outputs.outputs.HOSTED_UI_URL }}" >> $GITHUB_STEP_SUMMARY
-    
-    - name: Notify Slack
-      if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        payload: |
-          {
-            "text": "Serverless Notification System Deployment",
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": "Serverless Notification System Deployment"
-                }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Status:* ${{ job.status == 'success' && '✅ Success' || '❌ Failure' }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Environment:* ${{ github.event.inputs.environment || 'default' }}"
-                  }
-                ]
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*API URL:* ${{ steps.tf_outputs.outputs.API_URL || 'N/A' }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Cognito Domain:* ${{ steps.tf_outputs.outputs.COGNITO_DOMAIN || 'N/A' }}"
-                  }
-                ]
-              },
-              {
-                "type": "context",
-                "elements": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "Deployed by ${{ github.actor }} via ${{ github.event_name }}"
-                  }
-                ]
-              }
-            ]
-          }
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK 
+        echo "Hosted UI URL: ${{ steps.tf_outputs.outputs.HOSTED_UI_URL }}" >> $GITHUB_STEP_SUMMARY 
