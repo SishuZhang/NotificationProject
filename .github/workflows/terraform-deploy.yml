@@ -1,0 +1,239 @@
+name: Terraform AWS Deployment
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+env:
+  AWS_REGION: us-east-2
+  TERRAFORM_VERSION: 1.4.6
+  SENDER_EMAIL: notifications@example.com
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install boto3 pytest boto3-stubs[essential] mypy-boto3-ses mypy-boto3-dynamodb
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+        terraform_wrapper: false
+    
+    - name: Terraform Format
+      id: fmt
+      run: terraform fmt -check -recursive
+      continue-on-error: true
+    
+    - name: Terraform Init
+      id: init
+      run: terraform init
+    
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate
+    
+    - name: Terraform Plan
+      id: plan
+      if: github.event_name == 'pull_request'
+      run: terraform plan -no-color -var="aws_region=${{ env.AWS_REGION }}"
+      continue-on-error: true
+    
+    - name: Update Pull Request
+      uses: actions/github-script@v6
+      if: github.event_name == 'pull_request'
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+          
+          <details><summary>Show Plan</summary>
+          
+          \`\`\`terraform
+          ${{ steps.plan.outputs.stdout }}
+          \`\`\`
+          
+          </details>`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
+    
+    - name: Setup SES for Email Notifications
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      id: setup_ses
+      run: |
+        # Check if email is already verified
+        VERIFICATION_STATUS=$(aws ses get-identity-verification-attributes --identities ${{ env.SENDER_EMAIL }} --query "VerificationAttributes.${{ env.SENDER_EMAIL }}.VerificationStatus" --output text || echo "NOT_FOUND")
+        
+        if [ "$VERIFICATION_STATUS" != "Success" ]; then
+          echo "Verifying SES email identity: ${{ env.SENDER_EMAIL }}"
+          aws ses verify-email-identity --email-address ${{ env.SENDER_EMAIL }}
+          echo "Please check your email and verify the sender address before sending emails"
+          echo "::warning::SES email verification required for ${{ env.SENDER_EMAIL }}"
+        else
+          echo "SES email already verified: ${{ env.SENDER_EMAIL }}"
+        fi
+      continue-on-error: true
+    
+    - name: Package Lambda Functions
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      run: |
+        # Create a temporary directory for packaging
+        mkdir -p lambda_packages
+        
+        # Package the API Lambda
+        cd lambda_packages
+        cp ../lambda.py .
+        pip install boto3 -t .
+        zip -r lambda.zip .
+        mv lambda.zip ..
+        
+        # Package the Worker Lambda
+        cd ..
+        rm -rf lambda_packages/*
+        cp worker_lambda.py lambda_packages/
+        cd lambda_packages
+        pip install boto3 -t .
+        zip -r worker_lambda.zip .
+        mv worker_lambda.zip ..
+        
+        cd ..
+        ls -la *.zip
+    
+    - name: Terraform Apply
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      run: terraform apply -auto-approve -var="aws_region=${{ env.AWS_REGION }}"
+    
+    - name: Capture Terraform Outputs
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      id: tf_outputs
+      run: |
+        echo "API_URL=$(terraform output -raw api_url)" >> $GITHUB_OUTPUT
+        echo "USER_POOL_ID=$(terraform output -raw user_pool_id)" >> $GITHUB_OUTPUT
+        echo "APP_CLIENT_ID=$(terraform output -raw cognito_app_client_id)" >> $GITHUB_OUTPUT
+        echo "COGNITO_DOMAIN=$(terraform output -raw cognito_domain)" >> $GITHUB_OUTPUT
+        echo "HOSTED_UI_URL=$(terraform output -raw hosted_ui_url)" >> $GITHUB_OUTPUT
+    
+    - name: Run Test Suite
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      run: |
+        if [ -d "tests" ]; then
+          pytest -xvs tests/
+        else
+          echo "No tests directory found, skipping tests"
+        fi
+      continue-on-error: true
+    
+    - name: Deployment Summary
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      run: |
+        echo "## Deployment Complete ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### API Endpoint" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.tf_outputs.outputs.API_URL }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Cognito User Pool" >> $GITHUB_STEP_SUMMARY
+        echo "User Pool ID: ${{ steps.tf_outputs.outputs.USER_POOL_ID }}" >> $GITHUB_STEP_SUMMARY
+        echo "App Client ID: ${{ steps.tf_outputs.outputs.APP_CLIENT_ID }}" >> $GITHUB_STEP_SUMMARY
+        echo "Cognito Domain: ${{ steps.tf_outputs.outputs.COGNITO_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+        echo "Hosted UI URL: ${{ steps.tf_outputs.outputs.HOSTED_UI_URL }}" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Notify Slack
+      if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "Serverless Notification System Deployment",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "Serverless Notification System Deployment"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Status:* ${{ job.status == 'success' && '✅ Success' || '❌ Failure' }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Environment:* ${{ github.event.inputs.environment || 'default' }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*API URL:* ${{ steps.tf_outputs.outputs.API_URL || 'N/A' }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Cognito Domain:* ${{ steps.tf_outputs.outputs.COGNITO_DOMAIN || 'N/A' }}"
+                  }
+                ]
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Deployed by ${{ github.actor }} via ${{ github.event_name }}"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK 
