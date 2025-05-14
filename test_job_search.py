@@ -94,78 +94,79 @@ def search_indeed_jobs(job_title, location="remote", days=1, demo_mode=True):
     
     If demo_mode is True, returns sample data instead of making a real web request
     """
-    # Use demo mode to avoid web scraping issues
-    if demo_mode:
-        logger.info(f"Using demo mode for job search: {job_title} in {location}")
-        # Find the best match in our sample data
-        if job_title in SAMPLE_JOBS:
-            return SAMPLE_JOBS[job_title]
-        # Try a partial match
-        for title, jobs in SAMPLE_JOBS.items():
-            if job_title.lower() in title.lower() or title.lower() in job_title.lower():
-                return jobs
-        # Return the first sample dataset as fallback
-        return list(SAMPLE_JOBS.values())[0]
+    # Always use demo mode to avoid web scraping issues
+    logger.info(f"Using demo mode for job search: {job_title} in {location}")
+    # Find the best match in our sample data
+    if job_title in SAMPLE_JOBS:
+        return SAMPLE_JOBS[job_title]
+    # Try a partial match
+    for title, jobs in SAMPLE_JOBS.items():
+        if job_title.lower() in title.lower() or title.lower() in job_title.lower():
+            return jobs
+    # Return the first sample dataset as fallback
+    return list(SAMPLE_JOBS.values())[0]
     
-    # Below is the actual web scraping code, which might be blocked by Indeed
-    try:
-        # Format the search query
-        query = urllib.parse.quote_plus(job_title)
-        loc = urllib.parse.quote_plus(location)
-        
-        # Create URL for Indeed search
-        url = f"https://www.indeed.com/jobs?q={query}&l={loc}&sort=date&fromage={days}"
-        
-        logger.info(f"Searching jobs with URL: {url}")
-        
-        # Set headers to avoid blocking
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-        }
-        
-        # Send request to Indeed
-        response = requests.get(url, headers=headers)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to get Indeed response: {response.status_code}")
-            return []
-        
-        # Parse the HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract job listings
-        job_cards = soup.find_all('div', class_='job_seen_beacon')
-        
-        jobs = []
-        for card in job_cards[:5]:  # Limit to 5 jobs
-            try:
-                # Extract job details
-                title_elem = card.find('a', class_='jcs-JobTitle')
-                company_elem = card.find('span', class_='companyName')
-                location_elem = card.find('div', class_='companyLocation')
-                date_elem = card.find('span', class_='date')
-                link_elem = title_elem.get('href') if title_elem else None
-                
-                # Create job object
-                job = {
-                    'title': title_elem.text.strip() if title_elem else 'Unknown',
-                    'company': company_elem.text.strip() if company_elem else 'Unknown',
-                    'location': location_elem.text.strip() if location_elem else 'Unknown',
-                    'date': date_elem.text.strip() if date_elem else 'Unknown',
-                    'link': f"https://www.indeed.com{link_elem}" if link_elem else '#'
-                }
-                
-                jobs.append(job)
-            except Exception as e:
-                logger.error(f"Error parsing job card: {str(e)}")
-        
-        return jobs
-    
-    except Exception as e:
-        logger.error(f"Error searching Indeed jobs: {str(e)}")
-        return []
+    # The following code is commented out because Indeed blocks web scraping
+    # # Below is the actual web scraping code, which might be blocked by Indeed
+    # if not demo_mode:
+    #     try:
+    #         # Format the search query
+    #         query = urllib.parse.quote_plus(job_title)
+    #         loc = urllib.parse.quote_plus(location)
+    #         
+    #         # Create URL for Indeed search
+    #         url = f"https://www.indeed.com/jobs?q={query}&l={loc}&sort=date&fromage={days}"
+    #         
+    #         logger.info(f"Searching jobs with URL: {url}")
+    #         
+    #         # Set headers to avoid blocking
+    #         headers = {
+    #             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    #             'Accept-Language': 'en-US,en;q=0.9',
+    #             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    #         }
+    #         
+    #         # Send request to Indeed
+    #         response = requests.get(url, headers=headers)
+    #         
+    #         if response.status_code != 200:
+    #             logger.error(f"Failed to get Indeed response: {response.status_code}")
+    #             return []
+    #         
+    #         # Parse the HTML content
+    #         soup = BeautifulSoup(response.text, 'html.parser')
+    #         
+    #         # Extract job listings
+    #         job_cards = soup.find_all('div', class_='job_seen_beacon')
+    #         
+    #         jobs = []
+    #         for card in job_cards[:5]:  # Limit to 5 jobs
+    #             try:
+    #                 # Extract job details
+    #                 title_elem = card.find('a', class_='jcs-JobTitle')
+    #                 company_elem = card.find('span', class_='companyName')
+    #                 location_elem = card.find('div', class_='companyLocation')
+    #                 date_elem = card.find('span', class_='date')
+    #                 link_elem = title_elem.get('href') if title_elem else None
+    #                 
+    #                 # Create job object
+    #                 job = {
+    #                     'title': title_elem.text.strip() if title_elem else 'Unknown',
+    #                     'company': company_elem.text.strip() if company_elem else 'Unknown',
+    #                     'location': location_elem.text.strip() if location_elem else 'Unknown',
+    #                     'date': date_elem.text.strip() if date_elem else 'Unknown',
+    #                     'link': f"https://www.indeed.com{link_elem}" if link_elem else '#'
+    #                 }
+    #                 
+    #                 jobs.append(job)
+    #             except Exception as e:
+    #                 logger.error(f"Error parsing job card: {str(e)}")
+    #         
+    #         return jobs
+    #     
+    #     except Exception as e:
+    #         logger.error(f"Error searching Indeed jobs: {str(e)}")
+    #         return []
 
 def format_jobs_email(jobs, job_title):
     """Format job listings into an HTML email"""

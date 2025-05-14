@@ -44,7 +44,7 @@ The serverless architecture was chosen to provide:
 
 ## Key Features
 
-- **Job Search Notifications**: Automatically fetch and deliver the latest Indeed job postings
+- **Job Search Notifications**: Automatically deliver curated job listings (using sample data)
 - **Multi-Channel Delivery**: Send notifications via email (SES) or SMS (SNS)
 - **Scheduled Alerts**: Set up recurring job notifications at preferred intervals
 - **Secure Authentication**: API authentication using Amazon Cognito
@@ -52,6 +52,8 @@ The serverless architecture was chosen to provide:
 - **Operational Visibility**: Comprehensive logging and monitoring with CloudWatch
 - **Infrastructure as Code**: Fully automated deployment with Terraform
 - **CI/CD Pipeline**: Automated testing and deployment with GitHub Actions
+
+> **Note**: Due to Indeed's terms of service that block automated web scraping, this system uses sample job data instead of live job search results. The architecture and notification functionality remain fully functional, but the job search data is simulated.
 
 ## Architecture
 

@@ -167,20 +167,25 @@ def search_indeed_jobs(job_title, location="remote", days=1):
     
     Will use demo data if web access fails
     """
-    try:
-        # Try real web search first
-        jobs = _search_indeed_real(job_title, location, days)
-        
-        # If no jobs found or error occurred, use demo data
-        if not jobs:
-            logger.info(f"No jobs found through web search, using demo data for: {job_title}")
-            jobs = _get_demo_jobs(job_title, location)
-        
-        return jobs
-        
-    except Exception as e:
-        logger.error(f"Error in job search, using demo data: {str(e)}")
-        return _get_demo_jobs(job_title, location)
+    # Always use demo data because Indeed is blocking requests with 403 error
+    logger.info(f"Using demo data for job search: {job_title} in {location}")
+    return _get_demo_jobs(job_title, location)
+    
+    # The following code is disabled because Indeed is blocking scrapers
+    # try:
+    #     # Try real web search first
+    #     jobs = _search_indeed_real(job_title, location, days)
+    #     
+    #     # If no jobs found or error occurred, use demo data
+    #     if not jobs:
+    #         logger.info(f"No jobs found through web search, using demo data for: {job_title}")
+    #         jobs = _get_demo_jobs(job_title, location)
+    #     
+    #     return jobs
+    #     
+    # except Exception as e:
+    #     logger.error(f"Error in job search, using demo data: {str(e)}")
+    #     return _get_demo_jobs(job_title, location)
 
 def _get_demo_jobs(job_title, location):
     """Get demo jobs data based on job title"""
