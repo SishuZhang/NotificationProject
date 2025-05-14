@@ -4,8 +4,27 @@ variable "aws_region" {
   default     = "us-east-2"
 }
 
+variable "resource_suffix" {
+  description = "Optional suffix to append to resource names to avoid conflicts with existing resources"
+  type        = string
+  default     = ""
+}
+
 provider "aws" {
   region = var.aws_region
+}
+
+# Generate a random suffix if one is not provided
+resource "random_string" "resource_suffix" {
+  length  = 6
+  special = false
+  upper   = false
+  numeric = true
+}
+
+locals {
+  # Use the provided suffix if available, otherwise use the random one
+  suffix = var.resource_suffix != "" ? var.resource_suffix : random_string.resource_suffix.result
 }
 
 # SQS Queues with Dead Letter Queues (DLQ)
@@ -53,7 +72,7 @@ resource "aws_sqs_queue" "push_queue" {
 
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_role" {
-  name = "lambda_execution_role"
+  name = "lambda_execution_role_${local.suffix}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -134,7 +153,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 # Lambda Functions
 resource "aws_lambda_function" "notification_api_lambda" {
   filename         = "lambda.zip"
-  function_name    = "notification_api_lambda"
+  function_name    = "notification_api_lambda_${local.suffix}"
   role             = aws_iam_role.lambda_role.arn
   handler          = "lambda.lambda_handler"
   runtime          = "python3.9"
@@ -151,7 +170,7 @@ resource "aws_lambda_function" "notification_api_lambda" {
 
 resource "aws_lambda_function" "email_worker_lambda" {
   filename         = "worker_lambda.zip"
-  function_name    = "email_worker_lambda"
+  function_name    = "email_worker_lambda_${local.suffix}"
   role             = aws_iam_role.lambda_role.arn
   handler          = "worker_lambda.lambda_handler"
   runtime          = "python3.9"
@@ -167,7 +186,7 @@ resource "aws_lambda_function" "email_worker_lambda" {
 
 resource "aws_lambda_function" "sms_worker_lambda" {
   filename         = "worker_lambda.zip"
-  function_name    = "sms_worker_lambda"
+  function_name    = "sms_worker_lambda_${local.suffix}"
   role             = aws_iam_role.lambda_role.arn
   handler          = "worker_lambda.lambda_handler"
   runtime          = "python3.9"
@@ -243,16 +262,8 @@ resource "aws_cognito_user_pool" "user_pool" {
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "notification-system-${random_string.domain_prefix.result}"
+  domain       = "notification-system-${local.suffix}"
   user_pool_id = aws_cognito_user_pool.user_pool.id
-}
-
-resource "random_string" "domain_prefix" {
-  length  = 8
-  special = false
-  lower   = true
-  upper   = false
-  numeric = true
 }
 
 resource "aws_cognito_user_pool_client" "client" {
@@ -333,7 +344,7 @@ resource "aws_lambda_permission" "api_gateway_permission" {
 
 # DynamoDB Table
 resource "aws_dynamodb_table" "notification_status" {
-  name           = "notification_status"
+  name           = "notification_status_${local.suffix}"
   billing_mode   = "PAY_PER_REQUEST"
   hash_key       = "message_id"
 
@@ -358,7 +369,7 @@ resource "aws_dynamodb_table" "notification_status" {
 
 # CloudWatch Alarm for Lambda Errors
 resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
-  alarm_name          = "lambda-error-alarm"
+  alarm_name          = "lambda-error-alarm-${local.suffix}"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   metric_name         = "Errors"

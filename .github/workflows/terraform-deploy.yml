@@ -73,7 +73,10 @@ jobs:
     - name: Terraform Plan
       id: plan
       if: github.event_name == 'pull_request'
-      run: terraform plan -no-color -var="aws_region=${{ env.AWS_REGION }}"
+      run: |
+        # Generate a timestamp-based suffix for resources
+        TIMESTAMP=$(date +%Y%m%d%H%M%S)
+        terraform plan -no-color -var="aws_region=${{ env.AWS_REGION }}" -var="resource_suffix=tf${TIMESTAMP}"
       continue-on-error: true
     
     - name: Update Pull Request
@@ -106,16 +109,21 @@ jobs:
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
       id: setup_ses
       run: |
-        # Check if email is already verified
-        VERIFICATION_STATUS=$(aws ses get-identity-verification-attributes --identities ${{ env.SENDER_EMAIL }} --query "VerificationAttributes.${{ env.SENDER_EMAIL }}.VerificationStatus" --output text || echo "NOT_FOUND")
+        # Check if email is already verified using a safer approach
+        # The email address needs to be escaped in the JSON query
+        EMAIL_ESCAPED=$(echo ${{ env.SENDER_EMAIL }} | sed 's/@/\\@/g')
         
-        if [ "$VERIFICATION_STATUS" != "Success" ]; then
+        # First, list all verified identities
+        VERIFIED_EMAILS=$(aws ses list-identities --identity-type EmailAddress --output json)
+        
+        # Check if our email is in the list
+        if echo "$VERIFIED_EMAILS" | grep -q "${{ env.SENDER_EMAIL }}"; then
+          echo "SES email already verified: ${{ env.SENDER_EMAIL }}"
+        else
           echo "Verifying SES email identity: ${{ env.SENDER_EMAIL }}"
           aws ses verify-email-identity --email-address ${{ env.SENDER_EMAIL }}
           echo "Please check your email and verify the sender address before sending emails"
           echo "::warning::SES email verification required for ${{ env.SENDER_EMAIL }}"
-        else
-          echo "SES email already verified: ${{ env.SENDER_EMAIL }}"
         fi
       continue-on-error: true
     
@@ -128,7 +136,10 @@ jobs:
     
     - name: Terraform Apply
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-      run: terraform apply -auto-approve -var="aws_region=${{ env.AWS_REGION }}"
+      run: |
+        # Generate a timestamp-based suffix for resources
+        TIMESTAMP=$(date +%Y%m%d%H%M%S)
+        terraform apply -auto-approve -var="aws_region=${{ env.AWS_REGION }}" -var="resource_suffix=tf${TIMESTAMP}"
     
     - name: Capture Terraform Outputs
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
