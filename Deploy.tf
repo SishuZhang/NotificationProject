@@ -136,9 +136,18 @@ resource "aws_iam_policy" "lambda_policy" {
           "dynamodb:PutItem",
           "dynamodb:GetItem",
           "dynamodb:UpdateItem",
-          "dynamodb:Query"
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:DescribeTable",
+          "dynamodb:ListTables"
         ],
-        Resource = aws_dynamodb_table.notification_status.arn,
+        Resource = [
+          aws_dynamodb_table.notification_status.arn,
+          "${aws_dynamodb_table.notification_status.arn}/index/*"
+        ],
         Effect = "Allow"
       }
     ]
